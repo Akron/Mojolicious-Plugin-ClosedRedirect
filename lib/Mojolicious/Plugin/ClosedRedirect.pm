@@ -5,6 +5,7 @@ use Mojo::ByteStream 'b';
 
 our $VERSION = 0.01;
 
+our $ERROR = 'An Open Redirect attack was detected';
 
 # Register plugin
 sub register {
@@ -76,7 +77,7 @@ sub register {
       $c->res->headers->remove('Location');
 
       # Add error message
-      $c->flash(alert => 'An Open Redirect attack was detected');
+      $c->flash(alert => $ERROR);
 
       return;
     }
