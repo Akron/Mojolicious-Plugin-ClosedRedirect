@@ -31,6 +31,10 @@ sub register {
 	  url_unescape->
 	    hmac_sha1_sum( 'crto' . $secret );
 
+      $mojo->log->debug(
+	'ClosedRedirect: Generate ' . $url_check . ' for ' . $url->to_string
+      );
+
       # Append check parameter to url
       $url->query({ crto => substr($url_check, 0, $token_length) });
       return $url->to_string;
@@ -42,13 +46,20 @@ sub register {
     closed_redirect_to => sub {
       my $c = shift;
 
-      $mojo->log->debug('Check if redirect url is close');
+
+      $mojo->log->debug("ClosedRedirect: Test1 " . $_[0]);
 
       # Get url
       my $url = $c->url_for( $c->param( shift ) );
 
+      $mojo->log->debug("ClosedRedirect: Test2 " . $url);
+
       # Get 'crto' parameter
       my $check = $url->query->param('crto');
+
+      $mojo->log->debug("ClosedRedirect: Test with crto " . ($check || ''));
+
+      my $url_check;
 
       # No check parameter available
       if ($check) {
@@ -57,7 +68,7 @@ sub register {
 	$url->query->remove('crto');
 
 	# Calculate check
-	my $url_check =
+	$url_check =
 	  b($url->to_string)->
 	    url_unescape->
 	      hmac_sha1_sum( 'crto' . $secret);
@@ -65,13 +76,17 @@ sub register {
 	# Check if url is valid
 	if (substr($url_check, 0, $token_length) eq $check) {
 
-	  $mojo->log->debug('Check if redirect url is close: It\'s fine');
+	  $mojo->log->debug('ClosedRedirect: Fine');
 
 	  return $c->redirect_to( $url );
 	};
       };
 
-      $mojo->log->debug('Check if redirect url is close: It failed');
+      $mojo->log->debug(
+	'ClosedRedirect: Fail. ' .
+	'URL is ' . $url->to_string . ' ' .
+	'with check ' . ($url_check || '[]')
+      );
 
       # Delete location header
       $c->res->headers->remove('Location');
@@ -86,6 +101,7 @@ sub register {
 
 
 1;
+
 
 __END__
 
@@ -106,6 +122,16 @@ vulnerability by using signed URLs.
 =head2 register
 
 =head1 HELPERS
+
+it is not possible to change session information after a successfull redirect,
+so the normal way to deal with that is to have a fallback for non valid
+closed redirects in a controller.
+
+  unless ($c->closed_redirect_to('return_url')) {
+    return $c->redirect_to('home');
+  };
+  return;
+
 
 #   Protection for open redirect_to
 
