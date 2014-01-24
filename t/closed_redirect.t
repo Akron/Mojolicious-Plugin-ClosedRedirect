@@ -4,7 +4,7 @@ use Test::Mojo;
 use Test::More;
 use lib '../lib', 'lib';
 
-app->secret('abcdefghijklmnopqrstuvwxyz');
+app->secrets(['abcdefghijklmnopqrstuvwxyz']);
 
 plugin 'ClosedRedirect';
 

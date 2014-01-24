@@ -12,7 +12,7 @@ sub register {
   my ($plugin, $mojo, $param) = @_;
 
   my $token_length = $param->{token_length} || 16;
-  my $secret = $param->{secret} || $mojo->secret;
+  my $secret = $param->{secret} || $mojo->secrets->[0];
 
   # Establish 'signed_url_for' helper
   $mojo->helper(
@@ -127,10 +127,11 @@ it is not possible to change session information after a successfull redirect,
 so the normal way to deal with that is to have a fallback for non valid
 closed redirects in a controller.
 
-  unless ($c->closed_redirect_to('return_url')) {
-    return $c->redirect_to('home');
-  };
-  return;
+  # Check for Open Redirect Attack
+  return if $c->closed_redirect_to('return_url');
+
+  # Open Redirect attack discovered
+  return $c->redirect_to('home');
 
 
 #   Protection for open redirect_to
