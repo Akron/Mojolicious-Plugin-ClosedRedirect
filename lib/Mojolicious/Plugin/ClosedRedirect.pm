@@ -2,8 +2,7 @@ package Mojolicious::Plugin::ClosedRedirect;
 use Mojo::Base 'Mojolicious::Plugin';
 use Mojo::ByteStream 'b';
 
-
-our $VERSION = 0.01;
+our $VERSION = 0.02;
 
 our $ERROR = 'An Open Redirect attack was detected';
 
