@@ -2,9 +2,11 @@ package Mojolicious::Plugin::ClosedRedirect;
 use Mojo::Base 'Mojolicious::Plugin';
 use Mojo::ByteStream 'b';
 
-our $VERSION = 0.02;
+our $VERSION = 0.03;
 
 our $ERROR = 'An Open Redirect attack was detected';
+
+# Make this part of the validation framework
 
 # Register plugin
 sub register {
@@ -21,7 +23,7 @@ sub register {
       # Get url object
       my $url = $c->url_for(@_);
 
-      # Delete possible parameter
+      # Delete possible 'crto' parameter
       $url->query->remove('crto');
 
       # Calculate check
@@ -120,6 +122,8 @@ vulnerability by using signed URLs.
 
 =head2 register
 
+...
+
 =head1 HELPERS
 
 it is not possible to change session information after a successfull redirect,
@@ -133,7 +137,7 @@ closed redirects in a controller.
   return $c->redirect_to('home');
 
 
-#   Protection for open redirect_to
+  # Protection for open redirect_to
 
 
   $app->routes->route('/mypath')->name('mypath');
@@ -147,3 +151,5 @@ closed redirects in a controller.
 
   # Fails
   return $c->redirect_to('home');
+
+=cut

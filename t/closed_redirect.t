@@ -17,12 +17,10 @@ get '/my/:second/path' => sub {
   return shift->render(text => 'test');
 } => 'myname2';
 
-
-
 my $t = Test::Mojo->new;
 
 my $app = $t->app;
-my $c = Mojolicious::Controller->new->app($app);
+my $c = $app->build_controller;
 
 my $pure = '/mypath';
 my $fine = $pure . '?crto=afdac42addf2ac99';
