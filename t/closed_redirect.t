@@ -2,12 +2,10 @@
 use Mojolicious::Lite;
 use Test::Mojo;
 use Test::More;
-use lib '../lib', 'lib';
 
 app->secrets(['abcdefghijklmnopqrstuvwxyz']);
 
 plugin 'ClosedRedirect';
-
 
 get '/mypath' => sub {
   return shift->render(text => 'test');
@@ -193,7 +191,10 @@ ok($c->param(redirect_to_3 => $fine), 'Set parameter');
 ok($c->closed_redirect_to('redirect_to_3'), 'Redirect fine');
 is($c->res->headers->location, $pure, 'Redirect location is fine');
 
+my $query_test = 'http://example.com/?name=test';
 
+is($app->signed_url_for($query_test), 'http://example.com/?name=test&crto=b17f10b61d456e26', 'signed url');
+is($c->signed_url_for($query_test), 'http://example.com/?name=test&crto=b17f10b61d456e26', 'signed url');
 
 done_testing;
 exit;

@@ -13,7 +13,9 @@ WriteMakefile(
     'Test::More' => 0
   },
   PREREQ_PM => {
-    'Mojolicious' => 4.67
+    'Mojolicious' => 4.67,
+    'Mojolicious::Plugin::Localize' => 0,
+    'Mojolicious::Plugin::Notifications' => 0
     },
   META_MERGE   => {
     requires  => { perl => '5.010001' },

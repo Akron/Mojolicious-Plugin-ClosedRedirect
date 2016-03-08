@@ -1,2 +1,11 @@
+0.06 2016-03-08
+        - Improve documentation slightly.
+
+0.05 2015-06-11
+        - Fix case where no return url was present.
+
+0.04 2015-06-11
+        - Added Localization and Notifications.
+
 0.03 2015-06-05
         - Update to recent version of Mojolicious.

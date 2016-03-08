@@ -2,63 +2,94 @@ package Mojolicious::Plugin::ClosedRedirect;
 use Mojo::Base 'Mojolicious::Plugin';
 use Mojo::ByteStream 'b';
 
-our $VERSION = 0.03;
-
-our $ERROR = 'An Open Redirect attack was detected';
+our $VERSION = '0.05';
 
 # Make this part of the validation framework
 
 # Register plugin
 sub register {
-  my ($plugin, $mojo, $param) = @_;
+  my ($plugin, $app, $param) = @_;
+
+  $param ||= {};
+
+  # Load parameter from Config file
+  if (my $config_param = $app->config('ClosedRedirect')) {
+    $param = { %$param, %$config_param };
+  };
+
+  # Should the user be alerted of
+  # ClosedRedirect attacks?
+  my $silent = !!($param->{silent});
+
+  unless ($silent) {
+    # Add internationalization
+    $app->plugin(Localize => {
+      dict => {
+	ClosedRedirect => {
+	  error => {
+	    _ => sub { $_->locale },
+	    -en => 'An Open Redirect attack was detected',
+	    de => 'Ein Open Redirect Angriff wurde festgestellt'
+	  }
+	}
+      }
+    });
+
+    # Load notifications plugin
+    unless (exists $app->renderer->helpers->{notify}) {
+      $app->plugin('Notifications');
+    };
+  };
 
   my $token_length = $param->{token_length} || 16;
-  my $secret = $param->{secret} || $mojo->secrets->[0];
+  my $secret = $param->{secret} || $app->secrets->[0];
+
+
+  # Create a sign closure
+  my $_sign = sub {
+    my $url = shift;
+
+    # Delete possible 'crto' parameter
+    $url->query->remove('crto');
+
+    # Canonicalize
+    $url->path->canonicalize;
+
+    # Calculate check
+    my $url_check =
+      b($url->to_string)
+	->url_unescape
+	  ->hmac_sha1_sum( 'crto' . $secret );
+
+    # Append check parameter to url
+    $url->query({ crto => substr($url_check, 0, $token_length) });
+    return $url->to_string;
+  };
+
 
   # Establish 'signed_url_for' helper
-  $mojo->helper(
+  $app->helper(
     signed_url_for => sub {
       my $c = shift;
 
       # Get url object
-      my $url = $c->url_for(@_);
-
-      # Delete possible 'crto' parameter
-      $url->query->remove('crto');
-
-      # Calculate check
-      my $url_check =
-	b($url->to_string)->
-	  url_unescape->
-	    hmac_sha1_sum( 'crto' . $secret );
-
-      $mojo->log->debug(
-	'ClosedRedirect: Generate ' . $url_check . ' for ' . $url->to_string
-      );
-
-      # Append check parameter to url
-      $url->query({ crto => substr($url_check, 0, $token_length) });
-      return $url->to_string;
+      return $_sign->($c->url_for(@_));
     });
 
 
   # Establish 'closed_redirect_to' helper
-  $mojo->helper(
+  $app->helper(
     closed_redirect_to => sub {
       my $c = shift;
 
-
-      $mojo->log->debug("ClosedRedirect: Test1 " . $_[0]);
+      # Return false in case no return_url parameter was set
+      my $return_url = $c->param( shift ) or return;
 
       # Get url
-      my $url = $c->url_for( $c->param( shift ) );
-
-      $mojo->log->debug("ClosedRedirect: Test2 " . $url);
+      my $url = $c->url_for($return_url);
 
       # Get 'crto' parameter
       my $check = $url->query->param('crto');
-
-      $mojo->log->debug("ClosedRedirect: Test with crto " . ($check || ''));
 
       my $url_check;
 
@@ -76,24 +107,23 @@ sub register {
 
 	# Check if url is valid
 	if (substr($url_check, 0, $token_length) eq $check) {
-
-	  $mojo->log->debug('ClosedRedirect: Fine');
-
 	  return $c->redirect_to( $url );
 	};
       };
 
-      $mojo->log->debug(
-	'ClosedRedirect: Fail. ' .
-	'URL is ' . $url->to_string . ' ' .
-	'with check ' . ($url_check || '[]')
-      );
+      # TODO: report in attack log!
+      $app->log->warn(
+	'Open Redirect Attack: ' .
+	  'URL is ' . $url->to_string . ' with ' . ($url_check || 'no check')
+	);
 
       # Delete location header
       $c->res->headers->remove('Location');
 
       # Add error message
-      $c->flash(alert => $ERROR);
+      unless ($silent) {
+	$c->notify(error => $c->loc('ClosedRedirect_error'));
+      };
 
       return;
     }
@@ -113,7 +143,7 @@ __END__
 
 Mojolicious::Plugin::ClosedRedirect - Defend Open Redirect Attacks
 
-This plugin helps you to protect your users to not tap into a
+This plugin helps you to protect your users not to tap into a
 L<http://cwe.mitre.org/data/definitions/601.html|OpenRedirect>
 vulnerability by using signed URLs.
 
@@ -123,6 +153,30 @@ vulnerability by using signed URLs.
 =head2 register
 
 ...
+
+=over 2
+
+=item C<silent>
+
+Accepts a boolean value, if users should not receive a notification
+on redirect attacs. Defaults to not being silent.
+
+=item C<token_length>
+
+Set the length of the secret token to append to redirect locations.
+Defaults to C<16>.
+
+=item C<secret>
+
+Pass the secret to be used to hash on redirect locations.
+Defaults to the first application secret.
+
+=back
+
+All parameters can be set either on registration or as part
+of the configuration file with the key C<ClosedRedirect>
+(with the configuration file having the higher precedence).
+
 
 =head1 HELPERS
 
