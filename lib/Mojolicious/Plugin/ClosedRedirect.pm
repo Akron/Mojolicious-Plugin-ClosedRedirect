@@ -4,7 +4,9 @@ use Mojo::ByteStream 'b';
 
 our $VERSION = '0.05';
 
-# Make this part of the validation framework
+# TODO: Make this part of the validation framework
+# TODO: Check for all secrets in the roll!
+# Do not modify the sha1-token!
 
 # Register plugin
 sub register {
@@ -20,7 +22,6 @@ sub register {
   # Should the user be alerted of
   # ClosedRedirect attacks?
   my $silent = !!($param->{silent});
-
   unless ($silent) {
     # Add internationalization
     $app->plugin(Localize => {
@@ -136,23 +137,44 @@ sub register {
 
 __END__
 
-
 =pod
 
-=NAME
+=head1 NAME
 
 Mojolicious::Plugin::ClosedRedirect - Defend Open Redirect Attacks
 
+=head1 SYNOPSIS
+
+  # Check for Open Redirect Attack
+  return if $c->closed_redirect_to('return_url');
+
+  # Open Redirect attack discovered
+  return $c->redirect_to('home');
+
+  # Protection for open redirect_to
+
+  $app->routes->route('/mypath')->name('mypath');
+
+  $c->url_for('acct_login')->query([
+    return_url => $c->signed_url_for('mytest')
+  ]);
+
+  # Redirect to valid url from $c->param('return_url')
+  return if $c->closed_redirect_to('return_url');
+
+  # Fails
+  return $c->redirect_to('home');
+
+
+=head1 DESCRIPTION
+
 This plugin helps you to protect your users not to tap into a
 L<http://cwe.mitre.org/data/definitions/601.html|OpenRedirect>
-vulnerability by using signed URLs.
-
+vulnerabilities by using signed URLs.
 
 =head1 METHODS
 
 =head2 register
-
-...
 
 =over 2
 
@@ -177,33 +199,28 @@ All parameters can be set either on registration or as part
 of the configuration file with the key C<ClosedRedirect>
 (with the configuration file having the higher precedence).
 
-
 =head1 HELPERS
 
-it is not possible to change session information after a successfull redirect,
+=head1 BUGS and CAVEATS
+
+The URLs are currently signed using SHA-1 and a free, prefixed secret
+(with the default being the application secret).
+There are known attacks to SHA-1, so this solution does not mean
+you should not validate the URL further.
+
+It is not possible to change session information after a successfull redirect,
 so the normal way to deal with that is to have a fallback for non valid
 closed redirects in a controller.
 
-  # Check for Open Redirect Attack
-  return if $c->closed_redirect_to('return_url');
+=head1 AVAILABILITY
 
-  # Open Redirect attack discovered
-  return $c->redirect_to('home');
+  https://github.com/Akron/Mojolicious-Plugin-ClosedRedirect
 
+=head1 COPYRIGHT AND LICENSE
 
-  # Protection for open redirect_to
+Copyright (C) 2016, L<Nils Diewald|http://nils-diewald.de/>.
 
-
-  $app->routes->route('/mypath')->name('mypath');
-
-  $c->url_for('acct_login')->query([ return_url => $c->signed_url_for('mytest') ]);
-
-
-
-  # Redirect to valid url from $c->param('return_url')
-  return if $c->closed_redirect_to('return_url');
-
-  # Fails
-  return $c->redirect_to('home');
+This program is free software, you can redistribute it
+and/or modify it under the terms of the Artistic License version 2.0.
 
 =cut
