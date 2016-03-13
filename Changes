@@ -1,5 +1,6 @@
-0.06 2016-03-08
+0.06 2016-03-13
         - Improve documentation slightly.
+	- Support for rolling secrets.
 
 0.05 2015-06-11
         - Fix case where no return url was present.

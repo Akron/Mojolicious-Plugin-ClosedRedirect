@@ -197,4 +197,4 @@ is($app->signed_url_for($query_test), 'http://example.com/?name=test&crto=b17f10
 is($c->signed_url_for($query_test), 'http://example.com/?name=test&crto=b17f10b61d456e26', 'signed url');
 
 done_testing;
-exit;
+__END__

@@ -2,10 +2,9 @@ package Mojolicious::Plugin::ClosedRedirect;
 use Mojo::Base 'Mojolicious::Plugin';
 use Mojo::ByteStream 'b';
 
-our $VERSION = '0.05';
+our $VERSION = '0.06';
 
 # TODO: Make this part of the validation framework
-# TODO: Check for all secrets in the roll!
 # Do not modify the sha1-token!
 
 # Register plugin
@@ -43,8 +42,7 @@ sub register {
   };
 
   my $token_length = $param->{token_length} || 16;
-  my $secret = $param->{secret} || $app->secrets->[0];
-
+  my $p_secret = $param->{secret};
 
   # Create a sign closure
   my $_sign = sub {
@@ -55,6 +53,8 @@ sub register {
 
     # Canonicalize
     $url->path->canonicalize;
+
+    my $secret = $p_secret || $app->secrets->[0];
 
     # Calculate check
     my $url_check =
@@ -100,15 +100,18 @@ sub register {
 	# Remove parameter
 	$url->query->remove('crto');
 
-	# Calculate check
-	$url_check =
-	  b($url->to_string)->
-	    url_unescape->
-	      hmac_sha1_sum( 'crto' . $secret);
+	foreach ($p_secret // @{$app->secrets}) {
 
-	# Check if url is valid
-	if (substr($url_check, 0, $token_length) eq $check) {
-	  return $c->redirect_to( $url );
+	  # Calculate check
+	  $url_check =
+	    b($url->to_string)->
+	      url_unescape->
+		hmac_sha1_sum( 'crto' . $_);
+
+	  # Check if url is valid
+	  if (substr($url_check, 0, $token_length) eq $check) {
+	    return $c->redirect_to( $url );
+	  };
 	};
       };
 
