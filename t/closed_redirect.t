@@ -19,31 +19,50 @@ my $t = Test::Mojo->new;
 
 my $app = $t->app;
 my $c = $app->build_controller;
+my $attack = 0;
+my $url;
+
+$app->hook(
+  on_open_redirect_attack => sub {
+    (my $c, $url) = @_;
+    $attack = 1;
+  }
+);
 
 my $pure = '/mypath';
 my $fine = $pure . '?crto=afdac42addf2ac99';
 is($app->signed_url_for('myname'), $fine, 'signed url');
 is($c->signed_url_for('myname'), $fine, 'signed url');
+ok(!$attack, 'No attack');
 
 # Set correct
 ok($c->param(return_url => $fine), 'Set parameter');
 ok($c->closed_redirect_to('return_url'), 'Redirect fine');
 is($c->res->headers->location, $pure, 'Redirect location is fine');
+ok(!$attack, 'No attack');
 
 # Set false
 ok($c->param(return_url => substr($fine, 1)), 'Set parameter');
 ok(!$c->closed_redirect_to('return_url'), 'Redirect not fine');
 ok(!$c->res->headers->location, 'Redirect location is not fine');
+ok($attack, 'Attack!');
+like($url, qr/mypath/, 'Problem');
+$attack = 0;
+$url = undef;
 
 # Set false
 ok($c->param(return_url => substr($fine, 0, -1)), 'Set parameter');
 ok(!$c->closed_redirect_to('return_url'), 'Redirect not fine');
 ok(!$c->res->headers->location, 'Redirect location is not fine');
+ok($attack, 'Attack!');
+is($url, '/mypath', 'Problem');
+$attack = 0;
 
 # Set correct
 ok($c->param(return_url => $fine), 'Set parameter');
 ok($c->closed_redirect_to('return_url'), 'Redirect fine');
 is($c->res->headers->location, $pure, 'Redirect location is fine');
+ok(!$attack, 'Attack!');
 
 # ---
 
@@ -57,22 +76,29 @@ is($c->signed_url_for('myname2', second => 'peter'), $fine, 'signed url');
 ok($c->param(return_url_2 => $fine), 'Set parameter');
 ok($c->closed_redirect_to('return_url_2'), 'Redirect fine');
 is($c->res->headers->location, $pure, 'Redirect location is fine');
+ok(!$attack, 'Attack!');
 
 # Set false
 ok($c->param(return_url_2 => substr($fine, 1)), 'Set parameter');
 ok(!$c->closed_redirect_to('return_url_2'), 'Redirect not fine');
 ok(!$c->res->headers->location, 'Redirect location is not fine');
+ok($attack, 'Attack!');
+$attack = 0;
 
 # Set false
 ok($c->param(return_url_2 => substr($fine, 0, -1)), 'Set parameter');
 ok(!$c->closed_redirect_to('return_url_2'), 'Redirect not fine');
 ok(!$c->res->headers->location, 'Redirect location is not fine');
 # is($c->flash('alert'), 'An Open Redirect attack was detected', 'Flash alert');
+ok($attack, 'Attack!');
+$attack = 0;
+
 
 # Set correct
 ok($c->param(return_url_2 => $fine), 'Set parameter');
 ok($c->closed_redirect_to('return_url_2'), 'Redirect fine');
 is($c->res->headers->location, $pure, 'Redirect location is fine');
+ok(!$attack, 'No attack');
 
 
 # ---
@@ -88,21 +114,27 @@ is($c->signed_url_for($c->url_for('myname')->query({ test => 'hmm' })), $fine, '
 ok($c->param(redirect_to => $fine), 'Set parameter');
 ok($c->closed_redirect_to('redirect_to'), 'Redirect fine');
 is($c->res->headers->location, $pure, 'Redirect location is fine');
+ok(!$attack, 'No attack');
 
 # Set false
 ok($c->param(redirect_to => substr($fine, 1)), 'Set parameter');
 ok(!$c->closed_redirect_to('redirect_to'), 'Redirect not fine');
 ok(!$c->res->headers->location, 'Redirect location is not fine');
+ok($attack, 'Attack!');
+$attack = 0;
 
 # Set false
 ok($c->param(redirect_to => substr($fine, 0, -1)), 'Set parameter');
 ok(!$c->closed_redirect_to('redirect_to'), 'Redirect not fine');
 ok(!$c->res->headers->location, 'Redirect location is not fine');
+ok($attack, 'Attack!');
+$attack = 0;
 
 # Set correct
 ok($c->param(redirect_to => $fine), 'Set parameter');
 ok($c->closed_redirect_to('redirect_to'), 'Redirect fine');
 is($c->res->headers->location, $pure, 'Redirect location is fine');
+ok(!$attack, 'No attack');
 
 
 # ---
@@ -117,21 +149,27 @@ is($c->signed_url_for('http://example.com/'), $fine, 'signed url');
 ok($c->param(redirect_to_2 => $fine), 'Set parameter');
 ok($c->closed_redirect_to('redirect_to_2'), 'Redirect fine');
 is($c->res->headers->location, $pure, 'Redirect location is fine');
+ok(!$attack, 'No attack');
 
 # Set false
 ok($c->param(redirect_to_2 => substr($fine, 1)), 'Set parameter');
 ok(!$c->closed_redirect_to('redirect_to_2'), 'Redirect not fine');
 ok(!$c->res->headers->location, 'Redirect location is not fine');
+ok($attack, 'Attack!');
+$attack = 0;
 
 # Set false
 ok($c->param(redirect_to_2 => substr($fine, 0, -1)), 'Set parameter');
 ok(!$c->closed_redirect_to('redirect_to_2'), 'Redirect not fine');
 ok(!$c->res->headers->location, 'Redirect location is not fine');
+ok($attack, 'Attack!');
+$attack = 0;
 
 # Set correct
 ok($c->param(redirect_to_2 => $fine), 'Set parameter');
 ok($c->closed_redirect_to('redirect_to_2'), 'Redirect fine');
 is($c->res->headers->location, $pure, 'Redirect location is fine');
+ok(!$attack, 'No attack');
 
 
 # ---
@@ -145,21 +183,27 @@ is($c->signed_url_for($pure), $fine, 'signed url');
 ok($c->param(redirect_to_3 => $fine), 'Set parameter');
 ok($c->closed_redirect_to('redirect_to_3'), 'Redirect fine');
 is($c->res->headers->location, $pure, 'Redirect location is fine');
+ok(!$attack, 'No attack');
 
 # Set false
 ok($c->param(redirect_to_3 => substr($fine, 1)), 'Set parameter');
 ok(!$c->closed_redirect_to('redirect_to_3'), 'Redirect not fine');
 ok(!$c->res->headers->location, 'Redirect location is not fine');
+ok($attack, 'Attack!');
+$attack = 0;
 
 # Set false
 ok($c->param(redirect_to_3 => substr($fine, 0, -1)), 'Set parameter');
 ok(!$c->closed_redirect_to('redirect_to_3'), 'Redirect not fine');
 ok(!$c->res->headers->location, 'Redirect location is not fine');
+ok($attack, 'Attack!');
+$attack = 0;
 
 # Set correct
 ok($c->param(redirect_to_3 => $fine), 'Set parameter');
 ok($c->closed_redirect_to('redirect_to_3'), 'Redirect fine');
 is($c->res->headers->location, $pure, 'Redirect location is fine');
+ok(!$attack, 'No attack');
 
 
 # ---
@@ -175,21 +219,29 @@ is($c->signed_url_for($base), $fine, 'signed url');
 ok($c->param(redirect_to_3 => $fine), 'Set parameter');
 ok($c->closed_redirect_to('redirect_to_3'), 'Redirect fine');
 is($c->res->headers->location, $pure, 'Redirect location is fine');
+ok(!$attack, 'No attack');
+
 
 # Set false
 ok($c->param(redirect_to_3 => substr($fine, 1)), 'Set parameter');
 ok(!$c->closed_redirect_to('redirect_to_3'), 'Redirect not fine');
 ok(!$c->res->headers->location, 'Redirect location is not fine');
+ok($attack, 'Attack!');
+$attack = 0;
 
 # Set false
 ok($c->param(redirect_to_3 => substr($fine, 0, -1)), 'Set parameter');
 ok(!$c->closed_redirect_to('redirect_to_3'), 'Redirect not fine');
 ok(!$c->res->headers->location, 'Redirect location is not fine');
+ok($attack, 'Attack!');
+$attack = 0;
 
 # Set correct
 ok($c->param(redirect_to_3 => $fine), 'Set parameter');
 ok($c->closed_redirect_to('redirect_to_3'), 'Redirect fine');
 is($c->res->headers->location, $pure, 'Redirect location is fine');
+ok(!$attack, 'No attack');
+
 
 my $query_test = 'http://example.com/?name=test';
 

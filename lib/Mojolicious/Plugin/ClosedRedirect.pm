@@ -2,7 +2,7 @@ package Mojolicious::Plugin::ClosedRedirect;
 use Mojo::Base 'Mojolicious::Plugin';
 use Mojo::ByteStream 'b';
 
-our $VERSION = '0.06';
+our $VERSION = '0.08';
 
 # TODO: Make this part of the validation framework
 # Do not modify the sha1-token!
@@ -25,13 +25,13 @@ sub register {
     # Add internationalization
     $app->plugin(Localize => {
       dict => {
-	ClosedRedirect => {
-	  error => {
-	    _ => sub { $_->locale },
-	    -en => 'An Open Redirect attack was detected',
-	    de => 'Ein Open Redirect Angriff wurde festgestellt'
-	  }
-	}
+        ClosedRedirect => {
+          error => {
+            _ => sub { $_->locale },
+            -en => 'An Open Redirect attack was detected',
+            de => 'Ein Open Redirect Angriff wurde festgestellt'
+          }
+        }
       }
     });
 
@@ -59,8 +59,8 @@ sub register {
     # Calculate check
     my $url_check =
       b($url->to_string)
-	->url_unescape
-	  ->hmac_sha1_sum( 'crto' . $secret );
+      ->url_unescape
+      ->hmac_sha1_sum( 'crto' . $secret );
 
     # Append check parameter to url
     $url->query({ crto => substr($url_check, 0, $token_length) });
@@ -97,36 +97,42 @@ sub register {
       # No check parameter available
       if ($check) {
 
-	# Remove parameter
-	$url->query->remove('crto');
+        # Remove parameter
+        $url->query->remove('crto');
+        foreach ($p_secret // @{$app->secrets}) {
 
-	foreach ($p_secret // @{$app->secrets}) {
+          # Calculate check
+          $url_check =
+            b($url->to_string)->
+            url_unescape->
+            hmac_sha1_sum( 'crto' . $_);
 
-	  # Calculate check
-	  $url_check =
-	    b($url->to_string)->
-	      url_unescape->
-		hmac_sha1_sum( 'crto' . $_);
-
-	  # Check if url is valid
-	  if (substr($url_check, 0, $token_length) eq $check) {
-	    return $c->redirect_to( $url );
-	  };
-	};
+          # Check if url is valid
+          if (substr($url_check, 0, $token_length) eq $check) {
+            return $c->redirect_to( $url );
+          };
+        };
       };
+
+      # Emit hook
+      $app->plugins->emit_hook(
+        on_open_redirect_attack => (
+          $c, $url->to_string
+        )
+      );
 
       # TODO: report in attack log!
       $app->log->warn(
-	'Open Redirect Attack: ' .
-	  'URL is ' . $url->to_string . ' with ' . ($url_check || 'no check')
-	);
+        'Open Redirect Attack: ' .
+          'URL is ' . $url->to_string . ' with ' . ($url_check || 'no check')
+        );
 
       # Delete location header
       $c->res->headers->remove('Location');
 
       # Add error message
       unless ($silent) {
-	$c->notify(error => $c->loc('ClosedRedirect_error'));
+        $c->notify(error => $c->loc('ClosedRedirect_error'));
       };
 
       return;
@@ -204,6 +210,19 @@ of the configuration file with the key C<ClosedRedirect>
 
 =head1 HELPERS
 
+=head1 HOOKS
+
+=head2 on_open_redirect_attack
+
+  $app->hook(on_open_redirect_attack => sub {
+    my ($c, $url) = @_;
+    ...
+  });
+
+Emitted when a redirect attack was detected.
+Passes the controller object and the URL to redirect to.
+
+
 =head1 BUGS and CAVEATS
 
 The URLs are currently signed using SHA-1 and a free, prefixed secret
@@ -211,7 +230,7 @@ The URLs are currently signed using SHA-1 and a free, prefixed secret
 There are known attacks to SHA-1, so this solution does not mean
 you should not validate the URL further.
 
-It is not possible to change session information after a successfull redirect,
+It is not possible to change session information after a successful redirect,
 so the normal way to deal with that is to have a fallback for non valid
 closed redirects in a controller.
 
