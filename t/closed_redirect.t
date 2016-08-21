@@ -30,7 +30,7 @@ $app->hook(
 );
 
 my $pure = '/mypath';
-my $fine = $pure . '?crto=afdac42addf2ac99';
+my $fine = $pure . '?crto=a4538583e3c0a534f3863050804c746a9bd92a2f';
 is($app->signed_url_for('myname'), $fine, 'signed url');
 is($c->signed_url_for('myname'), $fine, 'signed url');
 ok(!$attack, 'No attack');
@@ -67,7 +67,7 @@ ok(!$attack, 'Attack!');
 # ---
 
 $pure = '/my/peter/path';
-$fine = $pure . '?crto=08c996d66b0967bf';
+$fine = $pure . '?crto=e10b3e94fbf66c38444ade5dde9447ae369d9baf';
 
 is($app->signed_url_for('myname2', second => 'peter'), $fine, 'signed url');
 is($c->signed_url_for('myname2', second => 'peter'), $fine, 'signed url');
@@ -100,12 +100,11 @@ ok($c->closed_redirect_to('return_url_2'), 'Redirect fine');
 is($c->res->headers->location, $pure, 'Redirect location is fine');
 ok(!$attack, 'No attack');
 
-
 # ---
 
 
 $pure = '/mypath?test=hmm';
-$fine = $pure . '&crto=f3431923ba42d7c2';
+$fine = $pure . '&crto=3da434e37b38bef41132aacf82d5b91c7cedbbc4';
 
 is($app->signed_url_for($app->url_for('myname')->query({ test => 'hmm' })), $fine, 'signed url');
 is($c->signed_url_for($c->url_for('myname')->query({ test => 'hmm' })), $fine, 'signed url');
@@ -136,12 +135,11 @@ ok($c->closed_redirect_to('redirect_to'), 'Redirect fine');
 is($c->res->headers->location, $pure, 'Redirect location is fine');
 ok(!$attack, 'No attack');
 
-
 # ---
 
 
 $pure = 'http://example.com/';
-$fine = $pure . '?crto=bbde52f856a13f49';
+$fine = $pure . '?crto=87760c7ca623ce8083bfb7b93ffd78ad88611b07';
 is($app->signed_url_for('http://example.com/'), $fine, 'signed url');
 is($c->signed_url_for('http://example.com/'), $fine, 'signed url');
 
@@ -171,11 +169,10 @@ ok($c->closed_redirect_to('redirect_to_2'), 'Redirect fine');
 is($c->res->headers->location, $pure, 'Redirect location is fine');
 ok(!$attack, 'No attack');
 
-
 # ---
 
 $pure = 'http://example.com/?name=test#age';
-$fine = 'http://example.com/?name=test&crto=98bfbe150f0cf587#age';
+$fine = 'http://example.com/?name=test&crto=8a986b12b3d7c6ae668238d41ec08907076d4d04#age';
 is($app->signed_url_for($pure), $fine, 'signed url');
 is($c->signed_url_for($pure), $fine, 'signed url');
 
@@ -209,9 +206,9 @@ ok(!$attack, 'No attack');
 # ---
 
 
-my $base = 'http://example.com/?name=test&crto=abcdefhhjgjhghjg#age';
+my $base = 'http://example.com/?name=test&crto=8a986b12b3d7c6ae668238d41ec08907076d4d04#age';
 $pure = 'http://example.com/?name=test#age';
-$fine = 'http://example.com/?name=test&crto=98bfbe150f0cf587#age';
+$fine = 'http://example.com/?name=test&crto=8a986b12b3d7c6ae668238d41ec08907076d4d04#age';
 is($app->signed_url_for($base), $fine, 'signed url');
 is($c->signed_url_for($base), $fine, 'signed url');
 
@@ -245,8 +242,8 @@ ok(!$attack, 'No attack');
 
 my $query_test = 'http://example.com/?name=test';
 
-is($app->signed_url_for($query_test), 'http://example.com/?name=test&crto=b17f10b61d456e26', 'signed url');
-is($c->signed_url_for($query_test), 'http://example.com/?name=test&crto=b17f10b61d456e26', 'signed url');
+is($app->signed_url_for($query_test), 'http://example.com/?name=test&crto=3f603010ed397ddb020a5d42efc3329e4c9f0a62', 'signed url');
+is($c->signed_url_for($query_test), 'http://example.com/?name=test&crto=3f603010ed397ddb020a5d42efc3329e4c9f0a62', 'signed url');
 
 done_testing;
 __END__

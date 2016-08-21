@@ -1,11 +1,16 @@
 package Mojolicious::Plugin::ClosedRedirect;
 use Mojo::Base 'Mojolicious::Plugin';
 use Mojo::ByteStream 'b';
+use Mojo::Util qw/secure_compare/;
 
-our $VERSION = '0.08';
+our $VERSION = '0.07';
 
 # TODO: Make this part of the validation framework
-# Do not modify the sha1-token!
+
+# TODO: Test with multiple parameters and multiple array parameters!
+# TODO: Accept same origin URLs.
+# TODO: Add 'is_local_url' validator check.
+#       see http://www.asp.net/mvc/overview/security/preventing-open-redirection-attacks
 
 # Register plugin
 sub register {
@@ -18,30 +23,6 @@ sub register {
     $param = { %$param, %$config_param };
   };
 
-  # Should the user be alerted of
-  # ClosedRedirect attacks?
-  my $silent = !!($param->{silent});
-  unless ($silent) {
-    # Add internationalization
-    $app->plugin(Localize => {
-      dict => {
-        ClosedRedirect => {
-          error => {
-            _ => sub { $_->locale },
-            -en => 'An Open Redirect attack was detected',
-            de => 'Ein Open Redirect Angriff wurde festgestellt'
-          }
-        }
-      }
-    });
-
-    # Load notifications plugin
-    unless (exists $app->renderer->helpers->{notify}) {
-      $app->plugin('Notifications');
-    };
-  };
-
-  my $token_length = $param->{token_length} || 16;
   my $p_secret = $param->{secret};
 
   # Create a sign closure
@@ -54,16 +35,17 @@ sub register {
     # Canonicalize
     $url->path->canonicalize;
 
+    # Get p_secret or the first application secret
     my $secret = $p_secret || $app->secrets->[0];
 
     # Calculate check
     my $url_check =
       b($url->to_string)
       ->url_unescape
-      ->hmac_sha1_sum( 'crto' . $secret );
+      ->hmac_sha1_sum($secret);
 
     # Append check parameter to url
-    $url->query({ crto => substr($url_check, 0, $token_length) });
+    $url->query({ crto => $url_check });
     return $url->to_string;
   };
 
@@ -105,35 +87,32 @@ sub register {
           $url_check =
             b($url->to_string)->
             url_unescape->
-            hmac_sha1_sum( 'crto' . $_);
+            hmac_sha1_sum($_);
 
           # Check if url is valid
-          if (substr($url_check, 0, $token_length) eq $check) {
+          if (secure_compare($url_check, $check)) {
             return $c->redirect_to( $url );
           };
         };
       };
 
+      my $url_string = $url->to_string;
+
       # Emit hook
       $app->plugins->emit_hook(
         on_open_redirect_attack => (
-          $c, $url->to_string
+          $c, $url_string
         )
       );
 
-      # TODO: report in attack log!
+      # Warn in log
       $app->log->warn(
         'Open Redirect Attack: ' .
-          'URL is ' . $url->to_string . ' with ' . ($url_check || 'no check')
+          "URL is $url_string with " . ($url_check || 'no check')
         );
 
       # Delete location header
       $c->res->headers->remove('Location');
-
-      # Add error message
-      unless ($silent) {
-        $c->notify(error => $c->loc('ClosedRedirect_error'));
-      };
 
       return;
     }
@@ -154,14 +133,15 @@ Mojolicious::Plugin::ClosedRedirect - Defend Open Redirect Attacks
 
 =head1 SYNOPSIS
 
-  # Check for Open Redirect Attack
+  plugin 'ClosedRedirect';
+
+  # Check for an Open Redirect Attack
   return if $c->closed_redirect_to('return_url');
 
   # Open Redirect attack discovered
   return $c->redirect_to('home');
 
-  # Protection for open redirect_to
-
+  # Protect URLs for open redirect attacks
   $app->routes->route('/mypath')->name('mypath');
 
   $c->url_for('acct_login')->query([
@@ -179,7 +159,10 @@ Mojolicious::Plugin::ClosedRedirect - Defend Open Redirect Attacks
 
 This plugin helps you to protect your users not to tap into a
 L<http://cwe.mitre.org/data/definitions/601.html|OpenRedirect>
-vulnerabilities by using signed URLs.
+vulnerability by using signed URLs.
+
+B<This is early software and the API and functionality may change in various ways!>
+B<Wait until it's published on CPAN before you use it!>
 
 =head1 METHODS
 
@@ -187,20 +170,11 @@ vulnerabilities by using signed URLs.
 
 =over 2
 
-=item C<silent>
-
-Accepts a boolean value, if users should not receive a notification
-on redirect attacs. Defaults to not being silent.
-
-=item C<token_length>
-
-Set the length of the secret token to append to redirect locations.
-Defaults to C<16>.
-
 =item C<secret>
 
-Pass the secret to be used to hash on redirect locations.
-Defaults to the first application secret.
+Pass a secret to be used to hash on redirect locations.
+Defaults to the first application secret, which is also
+recommended.
 
 =back
 
@@ -209,6 +183,10 @@ of the configuration file with the key C<ClosedRedirect>
 (with the configuration file having the higher precedence).
 
 =head1 HELPERS
+
+=head2 signed_url_for
+
+=head2 closed_redirect_to
 
 =head1 HOOKS
 
@@ -219,24 +197,26 @@ of the configuration file with the key C<ClosedRedirect>
     ...
   });
 
-Emitted when a redirect attack was detected.
+Emitted when an open redirect attack was detected.
 Passes the controller object and the URL to redirect to.
 
 
 =head1 BUGS and CAVEATS
 
-The URLs are currently signed using SHA-1 and a free, prefixed secret
+The URLs are currently signed using SHA-1 and secret
 (with the default being the application secret).
 There are known attacks to SHA-1, so this solution does not mean
-you should not validate the URL further.
+you should not validate the URL further in critical scenarios.
 
 It is not possible to change session information after a successful redirect,
 so the normal way to deal with that is to have a fallback for non valid
 closed redirects in a controller.
 
+
 =head1 AVAILABILITY
 
   https://github.com/Akron/Mojolicious-Plugin-ClosedRedirect
+
 
 =head1 COPYRIGHT AND LICENSE
 
