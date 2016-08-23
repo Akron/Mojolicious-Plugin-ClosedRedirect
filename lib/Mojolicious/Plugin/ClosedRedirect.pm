@@ -5,7 +5,12 @@ use Mojo::Util qw/secure_compare/;
 
 our $VERSION = '0.07';
 
+# TODO: Prevent Log Injection Attack
+#       https://www.owasp.org/index.php/Log_Injection
 # TODO: Make this part of the validation framework
+# TODO: Support domain whitelisting, like
+#       https://github.com/sdsdkkk/safe_redirect
+# TODO: Possibly overwrite redirect_to (or not)
 
 # TODO: Test with multiple parameters and multiple array parameters!
 # TODO: Accept same origin URLs.
@@ -25,39 +30,33 @@ sub register {
 
   my $p_secret = $param->{secret};
 
-  # Create a sign closure
-  my $_sign = sub {
-    my $url = shift;
-
-    # Delete possible 'crto' parameter
-    $url->query->remove('crto');
-
-    # Canonicalize
-    $url->path->canonicalize;
-
-    # Get p_secret or the first application secret
-    my $secret = $p_secret || $app->secrets->[0];
-
-    # Calculate check
-    my $url_check =
-      b($url->to_string)
-      ->url_unescape
-      ->hmac_sha1_sum($secret);
-
-    # Append check parameter to url
-    $url->query({ crto => $url_check });
-    return $url->to_string;
-  };
-
-
   # Establish 'signed_url_for' helper
   $app->helper(
     signed_url_for => sub {
       my $c = shift;
 
-      # Get url object
-      return $_sign->($c->url_for(@_));
-    });
+      my $url = $c->url_for(@_);
+
+      # Delete possible 'crto' parameter
+      $url->query->remove('crto');
+
+      # Canonicalize
+      $url->path->canonicalize;
+
+      # Get p_secret or the first application secret
+      my $secret = $p_secret || $app->secrets->[0];
+
+      # Calculate check
+      my $url_check =
+        b($url->to_string)
+        ->url_unescape
+        ->hmac_sha1_sum($secret);
+
+      # Append check parameter to url
+      $url->query({ crto => $url_check });
+      return $url->to_string;
+    }
+  );
 
 
   # Establish 'closed_redirect_to' helper
@@ -100,9 +99,7 @@ sub register {
 
       # Emit hook
       $app->plugins->emit_hook(
-        on_open_redirect_attack => (
-          $c, $url_string
-        )
+        on_open_redirect_attack => ( $c, $url_string )
       );
 
       # Warn in log
@@ -117,7 +114,70 @@ sub register {
       return;
     }
   );
+
+  $app->validator->add_check(
+    closed_redirect => sub {
+      my ($v, $name, $return_url, @arguments) = @_;
+
+      # No URL given
+      return 1 unless $return_url;
+
+      # TODO: Prevent for:
+      # http://example.com/view_topic?view=//www.qualys.com
+      # return if is_local_url();
+
+      # Get url
+      my $url = $app->url_for($return_url);
+
+      # TODO: is_local
+
+      # Get 'crto' parameter
+      my $check = $url->query->param('crto');
+
+      my $url_check;
+
+      # No check parameter available
+      if ($check) {
+
+        # Remove parameter
+        $url->query->remove('crto');
+
+        # Check all secrets
+        foreach ($p_secret || @{$app->secrets}) {
+
+          # Calculate check
+          $url_check =
+            b($url->to_string)->
+            url_unescape->
+            hmac_sha1_sum($_);
+
+          # Check if url is valid
+          return if secure_compare($url_check, $check);
+        };
+      };
+
+      my $url_string = $url->to_string;
+
+      # Emit hook
+      $app->plugins->emit_hook(
+        on_open_redirect_attack => ( $url_string )
+      );
+
+      # Warn in log
+      $app->log->warn(
+        'Open Redirect Attack: ' .
+          "URL is $url_string with " . ($url_check || 'no check')
+        );
+
+      return 1;
+    }
+  );
 };
+
+
+# Todo
+# sub is_local_url;
+# sub is_signed_url;
 
 
 1;
