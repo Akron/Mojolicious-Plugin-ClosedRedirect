@@ -1,12 +1,13 @@
 package Mojolicious::Plugin::ClosedRedirect;
 use Mojo::Base 'Mojolicious::Plugin';
 use Mojo::ByteStream 'b';
-use Mojo::Util qw/secure_compare/;
+use Mojo::Util qw/secure_compare url_unescape/;
 
 our $VERSION = '0.07';
 
 # TODO: Prevent Log Injection Attack
 #       https://www.owasp.org/index.php/Log_Injection
+# TODO: Use rolling private secrets
 # TODO: Make this part of the validation framework
 # TODO: Support domain whitelisting, like
 #       https://github.com/sdsdkkk/safe_redirect
@@ -16,6 +17,9 @@ our $VERSION = '0.07';
 # TODO: Accept same origin URLs.
 # TODO: Add 'is_local_url' validator check.
 #       see http://www.asp.net/mvc/overview/security/preventing-open-redirection-attacks
+# TODO: Probably enforce full URLs to handle things like:
+#       back_url.starts_with?(root_url)
+#       https://www.redmine.org/issues/19577
 
 # Register plugin
 sub register {
@@ -30,6 +34,9 @@ sub register {
 
   my $p_secret = $param->{secret};
 
+  # Get p_secret or the first application secret
+  my $secret = $p_secret || $app->secrets->[0];
+
   # Establish 'signed_url_for' helper
   $app->helper(
     signed_url_for => sub {
@@ -42,9 +49,6 @@ sub register {
 
       # Canonicalize
       $url->path->canonicalize;
-
-      # Get p_secret or the first application secret
-      my $secret = $p_secret || $app->secrets->[0];
 
       # Calculate check
       my $url_check =
@@ -115,47 +119,64 @@ sub register {
     }
   );
 
+  # Add validation check
+  # Alternatively make this a filter instead
   $app->validator->add_check(
     closed_redirect => sub {
-      my ($v, $name, $return_url, @arguments) = @_;
+      my ($v, $name, $return_url, $method) = @_;
+      $method //= '';
 
       # No URL given
-      return 1 unless $return_url;
+      return 'Redirect URL missing' unless $return_url;
 
-      # TODO: Prevent for:
-      # http://example.com/view_topic?view=//www.qualys.com
-      # return if is_local_url();
+      # No array allowed
+      return 'Only one redirect URL allowed' if ref $v->output->{$name} eq 'ARRAY';
+
+      # Check for local url
+      if ($method ne 'signed') {
+        return if local_url($return_url);
+      };
 
       # Get url
-      my $url = $app->url_for($return_url);
-
-      # TODO: is_local
-
-      # Get 'crto' parameter
-      my $check = $url->query->param('crto');
-
+      my $url = Mojo::URL->new($return_url);
       my $url_check;
 
-      # No check parameter available
-      if ($check) {
+      # local_url not valid
+      # Support signing
+      unless ($method eq 'local') {
 
-        # Remove parameter
-        $url->query->remove('crto');
+        # Get 'crto' parameter
+        my $check = $url->query->param('crto');
 
-        # Check all secrets
-        foreach ($p_secret || @{$app->secrets}) {
+        # No check parameter available
+        if ($check) {
 
-          # Calculate check
-          $url_check =
-            b($url->to_string)->
-            url_unescape->
-            hmac_sha1_sum($_);
+          # Remove parameter
+          $url->query->remove('crto');
 
-          # Check if url is valid
-          return if secure_compare($url_check, $check);
+          # Check all secrets
+          foreach ($p_secret || @{$app->secrets}) {
+
+            # Calculate check
+            $url_check =
+              b($url->to_string)->
+              url_unescape->
+              hmac_sha1_sum($_);
+
+            # Check if signed url is valid
+            if (secure_compare($url_check, $check)) {
+
+              # TODO: Remove authorization stuff!
+
+              # Rewrite parameter
+              $v->output->{$name} = $url->to_string;
+              return;
+            };
+          };
         };
       };
 
+      # Get string
       my $url_string = $url->to_string;
 
       # Emit hook
@@ -169,15 +190,37 @@ sub register {
           "URL is $url_string with " . ($url_check || 'no check')
         );
 
-      return 1;
+      return 'Redirect URL is invalid';
     }
   );
 };
 
 
-# Todo
-# sub is_local_url;
-# sub is_signed_url;
+# Check for local URL
+# Based on http://www.asp.net/mvc/overview/security/preventing-open-redirection-attacks
+sub local_url {
+  my $url = $_[0];
+
+  $url = url_unescape $url;
+
+  # Alternatively: if path !~ %r{\A/([^/]|\z)}
+
+  my $first  = substr($url, 0, 1);
+  my $second = length($url) > 1 ? substr($url, 1, 1) : '';
+  if (
+    (
+      ($first eq '/') && (
+        length($url) == 1 ||
+          ($second ne '/' && $second ne '\\')
+        )
+    ) || (
+      length($url) > 1 && $first eq '~' && $second eq '/'
+    )
+  ) {
+    return 1;
+  };
+  return 0;
+};
 
 
 1;
@@ -219,7 +262,8 @@ Mojolicious::Plugin::ClosedRedirect - Defend Open Redirect Attacks
 
 This plugin helps you to protect your users not to tap into a
 L<http://cwe.mitre.org/data/definitions/601.html|OpenRedirect>
-vulnerability by using signed URLs.
+vulnerability by limiting to local URLs and using
+L<https://webmasters.googleblog.com/2009/01/open-redirect-urls-is-your-site-being.html|signed URLs>.
 
 B<This is early software and the API and functionality may change in various ways!>
 B<Wait until it's published on CPAN before you use it!>
@@ -232,9 +276,8 @@ B<Wait until it's published on CPAN before you use it!>
 
 =item C<secret>
 
-Pass a secret to be used to hash on redirect locations.
-Defaults to the first application secret, which is also
-recommended.
+Set a special secret to be used to sign URLs.
+Defaults to the first application secret.
 
 =back
 
@@ -248,6 +291,34 @@ of the configuration file with the key C<ClosedRedirect>
 
 =head2 closed_redirect_to
 
+Using the validation check is preferred.
+The helper may be used in case the redirect URL comes from other sources,
+like the C<Referrer> header.
+
+=head1 CHECKS
+
+=head2 closed_redirect
+
+  get '/login' => sub {
+    my $c = shift;
+    my $v = $c->validation;
+
+    # Check for a redirection parameter
+    $v->required('return_to')->closed_redirect;
+
+    # Redirect to home page
+    return $c->redirect_to('/') if $v->has_error;
+
+    # Redirect to redirection URL
+    return $c->redirect_to($v->param('return_to'));
+  };
+
+If no parameter is passed, local paths or signed URLs are accepted.
+If the parameter C<signed> is passed, only signed URLs are accepted.
+If the parameter C<local> is passed, only local URLs are accepted.
+
+If the parameter was signed, the signature will be removed on success.
+
 =head1 HOOKS
 
 =head2 on_open_redirect_attack
@@ -258,7 +329,7 @@ of the configuration file with the key C<ClosedRedirect>
   });
 
 Emitted when an open redirect attack was detected.
-Passes the controller object and the URL to redirect to.
+Passes the controller object and the URL tried to redirect to.
 
 
 =head1 BUGS and CAVEATS
