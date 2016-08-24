@@ -205,6 +205,10 @@ sub local_url {
 
   # Alternatively: if path !~ %r{\A/([^/]|\z)}
 
+  return 1 if $url =~ m!^(?:/(?:[^\/\\]|$)|~\/.)!;
+  return;
+
+  # Not important ...
   my $first  = substr($url, 0, 1);
   my $second = length($url) > 1 ? substr($url, 1, 1) : '';
   if (
