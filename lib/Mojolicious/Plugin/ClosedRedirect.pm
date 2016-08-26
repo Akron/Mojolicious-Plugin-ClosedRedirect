@@ -1,7 +1,7 @@
 package Mojolicious::Plugin::ClosedRedirect;
 use Mojo::Base 'Mojolicious::Plugin';
 use Mojo::ByteStream 'b';
-use Mojo::Util qw/secure_compare url_unescape/;
+use Mojo::Util qw/secure_compare url_unescape quote/;
 
 our $VERSION = '0.07';
 
@@ -127,70 +127,83 @@ sub register {
       $method //= '';
 
       # No URL given
-      return 'Redirect URL missing' unless $return_url;
+      # This is not judged as an Open Redirect attack
+      return 'Redirect is missing' unless $return_url;
+
+      my ($err, $url);
 
       # No array allowed
-      return 'Only one redirect URL allowed' if ref $v->output->{$name} eq 'ARRAY';
+      if (ref $v->output->{$name} eq 'ARRAY') {
+        $err = 'Redirect is defined multiple times';
+      }
 
-      # Check for local url
-      if ($method ne 'signed') {
-        return if local_url($return_url);
-      };
+      # Parameter is fine
+      else {
 
-      # Get url
-      my $url = Mojo::URL->new($return_url);
-      my $url_check;
+        # Check for local url
+        if ($method ne 'signed') {
 
-      # local_url not valid
-      # Support signing
-      unless ($method eq 'local') {
+          # That's fine
+          return if local_url($return_url);
+        };
 
-        # Get 'crto' parameter
-        my $check = $url->query->param('crto');
+        # Get url
+        $url = Mojo::URL->new($return_url);
 
-        # No check parameter available
-        if ($check) {
+        # local_url not valid
+        # Support signing
+        if ($method eq 'local') {
+          # check host and port
+        }
 
-          # Remove parameter
-          $url->query->remove('crto');
+        else {
+          # Get 'crto' parameter
+          my $check = $url->query->param('crto');
 
-          # Check all secrets
-          foreach ($p_secret || @{$app->secrets}) {
+          # No check parameter available
+          if ($check) {
 
-            # Calculate check
-            $url_check =
-              b($url->to_string)->
-              url_unescape->
-              hmac_sha1_sum($_);
+            # Remove parameter
+            $url->query->remove('crto');
 
-            # Check if signed url is valid
-            if (secure_compare($url_check, $check)) {
+            my $url_check;
 
-              # TODO: Remove authorization stuff!
+            # Check all secrets
+            foreach ($p_secret || @{$app->secrets}) {
 
-              # Rewrite parameter
-              $v->output->{$name} = $url->to_string;
-              return;
+              # Calculate check
+              $url_check =
+                b($url->to_string)->
+                url_unescape->
+                hmac_sha1_sum($_);
+
+              # Check if signed url is valid
+              if (secure_compare($url_check, $check)) {
+
+                # TODO: Remove authorization stuff!
+
+                # Rewrite parameter
+                $v->output->{$name} = $url->to_string;
+                return;
+              };
             };
           };
         };
       };
 
-      # Get string
-      my $url_string = $url->to_string;
+      $err //= 'Redirect is invalid';
 
       # Emit hook
       $app->plugins->emit_hook(
-        on_open_redirect_attack => ( $url_string )
+        on_open_redirect_attack => ( $name, $return_url, $err )
       );
 
       # Warn in log
       $app->log->warn(
-        'Open Redirect Attack: ' .
-          "URL is $url_string with " . ($url_check || 'no check')
+        "Open Redirect Attack - $err: URL for " . quote($name) . ' is ' . quote($return_url)
         );
 
-      return 'Redirect URL is invalid';
+      return $err;
     }
   );
 };
@@ -328,12 +341,12 @@ If the parameter was signed, the signature will be removed on success.
 =head2 on_open_redirect_attack
 
   $app->hook(on_open_redirect_attack => sub {
-    my ($c, $url) = @_;
+    my ($field, $url, $msg) = @_;
     ...
   });
 
 Emitted when an open redirect attack was detected.
-Passes the controller object and the URL tried to redirect to.
+Passes the URL tried to redirect to.
 
 
 =head1 BUGS and CAVEATS
