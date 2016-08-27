@@ -38,6 +38,7 @@ sub register {
   my $secret = $p_secret || $app->secrets->[0];
 
   # Establish 'signed_url_for' helper
+  # TODO: Better sign_redirect_for
   $app->helper(
     signed_url_for => sub {
       my $c = shift;
@@ -144,7 +145,18 @@ sub register {
         if ($method ne 'signed') {
 
           # That's fine
-          return if local_url($return_url);
+          if (local_url($return_url)) {
+            # Get url
+            $url = Mojo::URL->new($return_url);
+
+            # Remove parameter if existent
+            $url->query->remove('crto');
+
+            # Rewrite parameter
+            $v->output->{$name} = $url->to_string;
+
+            return;
+          };
         };
 
         # Get url
@@ -152,11 +164,8 @@ sub register {
 
         # local_url not valid
         # Support signing
-        if ($method eq 'local') {
-          # check host and port
-        }
+        unless ($method eq 'local') {
 
-        else {
           # Get 'crto' parameter
           my $check = $url->query->param('crto');
 
@@ -251,35 +260,32 @@ __END__
 
 Mojolicious::Plugin::ClosedRedirect - Defend Open Redirect Attacks
 
+
 =head1 SYNOPSIS
 
   plugin 'ClosedRedirect';
 
-  # Check for an Open Redirect Attack
-  return if $c->closed_redirect_to('return_url');
+  get '/login' => sub {
+    my $c = shift;
+    my $v = $c->validation;
 
-  # Open Redirect attack discovered
-  return $c->redirect_to('home');
+    # Check for a redirection parameter
+    $v->required('fwd')->closed_redirect;
 
-  # Protect URLs for open redirect attacks
-  $app->routes->route('/mypath')->name('mypath');
+    # Redirect to home page on error
+    return $c->redirect_to('/') if $v->has_error;
 
-  $c->url_for('acct_login')->query([
-    return_url => $c->signed_url_for('mytest')
-  ]);
-
-  # Redirect to valid url from $c->param('return_url')
-  return if $c->closed_redirect_to('return_url');
-
-  # Fails
-  return $c->redirect_to('home');
+    # Redirect to redirection URL
+    return $c->redirect_to($v->param('fwd'));
+  };
 
 
 =head1 DESCRIPTION
 
-This plugin helps you to protect your users not to tap into a
+This plugin helps you to avoid
 L<http://cwe.mitre.org/data/definitions/601.html|OpenRedirect>
-vulnerability by limiting to local URLs and using
+vulnerability in your application by limiting redirections
+to local URLs and/or using
 L<https://webmasters.googleblog.com/2009/01/open-redirect-urls-is-your-site-being.html|signed URLs>.
 
 B<This is early software and the API and functionality may change in various ways!>
@@ -306,11 +312,11 @@ of the configuration file with the key C<ClosedRedirect>
 
 =head2 signed_url_for
 
-=head2 closed_redirect_to
+  $c->url_for('/login')->query([
+    fwd => $c->signed_url_for('http://example.com/path')
+  ]);
 
-Using the validation check is preferred.
-The helper may be used in case the redirect URL comes from other sources,
-like the C<Referrer> header.
+Sign a redirection URL with the defined secret.
 
 =head1 CHECKS
 
@@ -321,18 +327,18 @@ like the C<Referrer> header.
     my $v = $c->validation;
 
     # Check for a redirection parameter
-    $v->required('return_to')->closed_redirect;
+    $v->required('fwd')->closed_redirect;
 
-    # Redirect to home page
+    # Redirect to home page on error
     return $c->redirect_to('/') if $v->has_error;
 
     # Redirect to redirection URL
-    return $c->redirect_to($v->param('return_to'));
+    return $c->redirect_to($v->param('fwd'));
   };
 
 If no parameter is passed, local paths or signed URLs are accepted.
 If the parameter C<signed> is passed, only signed URLs are accepted.
-If the parameter C<local> is passed, only local URLs are accepted.
+If the parameter C<local> is passed, only local paths are accepted.
 
 If the parameter was signed, the signature will be removed on success.
 
@@ -341,24 +347,21 @@ If the parameter was signed, the signature will be removed on success.
 =head2 on_open_redirect_attack
 
   $app->hook(on_open_redirect_attack => sub {
-    my ($field, $url, $msg) = @_;
+    my ($name, $url, $msg) = @_;
     ...
   });
 
 Emitted when an open redirect attack was detected.
-Passes the URL tried to redirect to.
+Passes the parameter name, the first failing URL,
+and the error message of the check.
 
 
 =head1 BUGS and CAVEATS
 
-The URLs are currently signed using SHA-1 and secret
+The URLs are currently signed using SHA-1 and a secret
 (with the default being the application secret).
 There are known attacks to SHA-1, so this solution does not mean
 you should not validate the URL further in critical scenarios.
-
-It is not possible to change session information after a successful redirect,
-so the normal way to deal with that is to have a fallback for non valid
-closed redirects in a controller.
 
 
 =head1 AVAILABILITY

@@ -45,6 +45,23 @@ get '/local' => sub {
   return $c->render(text => 'fail-' . $fail, status => 403);
 } => 'local';
 
+
+# Check for local redirect parameter
+get '/all' => sub {
+  my $c = shift;
+  my $v = $c->validation;
+
+  $v->required('fwd')->closed_redirect;
+
+  return $c->render(text => $v->param('fwd')) unless $v->has_error;
+
+  my $fail = $v->param('fwd') // 'no';
+  $fail .= '-' . join(',', @{$v->error('fwd')});
+  return $c->render(text => 'fail-' . $fail, status => 403);
+} => 'all';
+
+
+
 my $t = Test::Mojo->new;
 
 # Check signed
@@ -114,6 +131,23 @@ $t->get_ok('/local?fwd=')
   ->content_is('fail-no-required')
   ;
 ok(!$fail, 'No hook');
+
+
+# Check all
+$t->get_ok('/all?fwd=hallo')
+  ->status_is(403)
+  ->content_is('fail-no-closed_redirect,Redirect is invalid');
+is($fail, 'Fail: fwd:hallo - Redirect is invalid', 'Failed');
+$fail = '';
+
+$t->get_ok('/all?fwd=/mypath?crto=a4538583e3c0a534f3863050804c746a9bd92a2f')
+  ->status_is(200)
+  ->content_is('/mypath');
+ok(!$fail, 'No fail');
+
+
+
+
 
 done_testing;
 __END__
