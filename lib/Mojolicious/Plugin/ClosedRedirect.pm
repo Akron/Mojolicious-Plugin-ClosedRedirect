@@ -3,17 +3,11 @@ use Mojo::Base 'Mojolicious::Plugin';
 use Mojo::ByteStream 'b';
 use Mojo::Util qw/secure_compare url_unescape quote/;
 
-our $VERSION = '0.07';
+our $VERSION = '0.08';
 
-# TODO: Prevent Log Injection Attack
-#       https://www.owasp.org/index.php/Log_Injection
-# TODO: Use rolling private secrets
-# TODO: Make this part of the validation framework
+# TODO: Use rolling plugin secrets
 # TODO: Support domain whitelisting, like
 #       https://github.com/sdsdkkk/safe_redirect
-# TODO: Possibly overwrite redirect_to (or not)
-
-# TODO: Test with multiple parameters and multiple array parameters!
 # TODO: Accept same origin URLs.
 # TODO: Add 'is_local_url' validator check.
 #       see http://www.asp.net/mvc/overview/security/preventing-open-redirection-attacks
@@ -34,9 +28,6 @@ sub register {
 
   my $p_secret = $param->{secret};
 
-  # Get p_secret or the first application secret
-  my $secret = $p_secret || $app->secrets->[0];
-
   # Establish 'signed_url_for' helper
   # TODO: Better sign_redirect_for
   $app->helper(
@@ -51,6 +42,9 @@ sub register {
       # Canonicalize
       $url->path->canonicalize;
 
+      # Get p_secret or the first application secret
+      my $secret = $p_secret || $app->secrets->[0];
+
       # Calculate check
       my $url_check =
         b($url->to_string)
@@ -63,62 +57,6 @@ sub register {
     }
   );
 
-
-  # Establish 'closed_redirect_to' helper
-  $app->helper(
-    closed_redirect_to => sub {
-      my $c = shift;
-
-      # Return false in case no return_url parameter was set
-      my $return_url = $c->param( shift ) or return;
-
-      # Get url
-      my $url = $c->url_for($return_url);
-
-      # Get 'crto' parameter
-      my $check = $url->query->param('crto');
-
-      my $url_check;
-
-      # No check parameter available
-      if ($check) {
-
-        # Remove parameter
-        $url->query->remove('crto');
-        foreach ($p_secret // @{$app->secrets}) {
-
-          # Calculate check
-          $url_check =
-            b($url->to_string)->
-            url_unescape->
-            hmac_sha1_sum($_);
-
-          # Check if url is valid
-          if (secure_compare($url_check, $check)) {
-            return $c->redirect_to( $url );
-          };
-        };
-      };
-
-      my $url_string = $url->to_string;
-
-      # Emit hook
-      $app->plugins->emit_hook(
-        on_open_redirect_attack => ( $c, $url_string )
-      );
-
-      # Warn in log
-      $app->log->warn(
-        'Open Redirect Attack: ' .
-          "URL is $url_string with " . ($url_check || 'no check')
-        );
-
-      # Delete location header
-      $c->res->headers->remove('Location');
-
-      return;
-    }
-  );
 
   # Add validation check
   # Alternatively make this a filter instead
@@ -141,11 +79,11 @@ sub register {
       # Parameter is fine
       else {
 
-        # Check for local url
+        # Check for local paths
         if ($method ne 'signed') {
 
           # That's fine
-          if (local_url($return_url)) {
+          if (local_path($return_url)) {
             # Get url
             $url = Mojo::URL->new($return_url);
 
@@ -162,7 +100,7 @@ sub register {
         # Get url
         $url = Mojo::URL->new($return_url);
 
-        # local_url not valid
+        # local_path not valid
         # Support signing
         unless ($method eq 'local') {
 
@@ -208,6 +146,7 @@ sub register {
       );
 
       # Warn in log
+      # Prevents log-injection attack
       $app->log->warn(
         "Open Redirect Attack - $err: URL for " . quote($name) . ' is ' . quote($return_url)
         );
@@ -218,34 +157,15 @@ sub register {
 };
 
 
-# Check for local URL
+# Check for local Path
 # Based on http://www.asp.net/mvc/overview/security/preventing-open-redirection-attacks
-sub local_url {
+sub local_path {
   my $url = $_[0];
 
   $url = url_unescape $url;
 
-  # Alternatively: if path !~ %r{\A/([^/]|\z)}
-
   return 1 if $url =~ m!^(?:/(?:[^\/\\]|$)|~\/.)!;
   return;
-
-  # Not important ...
-  my $first  = substr($url, 0, 1);
-  my $second = length($url) > 1 ? substr($url, 1, 1) : '';
-  if (
-    (
-      ($first eq '/') && (
-        length($url) == 1 ||
-          ($second ne '/' && $second ne '\\')
-        )
-    ) || (
-      length($url) > 1 && $first eq '~' && $second eq '/'
-    )
-  ) {
-    return 1;
-  };
-  return 0;
 };
 
 
@@ -272,11 +192,11 @@ Mojolicious::Plugin::ClosedRedirect - Defend Open Redirect Attacks
     # Check for a redirection parameter
     $v->required('fwd')->closed_redirect;
 
-    # Redirect to home page on error
-    return $c->redirect_to('/') if $v->has_error;
-
     # Redirect to redirection URL
-    return $c->redirect_to($v->param('fwd'));
+    return $c->redirect_to($v->param('fwd')) unless $v->has_error;
+
+    # Redirect to home page on error
+    return $c->redirect_to('/');
   };
 
 
@@ -284,8 +204,8 @@ Mojolicious::Plugin::ClosedRedirect - Defend Open Redirect Attacks
 
 This plugin helps you to avoid
 L<http://cwe.mitre.org/data/definitions/601.html|OpenRedirect>
-vulnerability in your application by limiting redirections
-to local URLs and/or using
+vulnerabilities in your application by limiting redirections
+to either local paths or
 L<https://webmasters.googleblog.com/2009/01/open-redirect-urls-is-your-site-being.html|signed URLs>.
 
 B<This is early software and the API and functionality may change in various ways!>
@@ -322,25 +242,17 @@ Sign a redirection URL with the defined secret.
 
 =head2 closed_redirect
 
-  get '/login' => sub {
-    my $c = shift;
-    my $v = $c->validation;
+  # Check for a redirection parameter
+  $c->validation->required('fwd')->closed_redirect;
 
-    # Check for a redirection parameter
-    $v->required('fwd')->closed_redirect;
+Check the parameter in scope for being a valid URL to redirect to.
 
-    # Redirect to home page on error
-    return $c->redirect_to('/') if $v->has_error;
-
-    # Redirect to redirection URL
-    return $c->redirect_to($v->param('fwd'));
-  };
-
-If no parameter is passed, local paths or signed URLs are accepted.
+If no parameter is passed to the check, local paths or signed URLs are accepted.
 If the parameter C<signed> is passed, only signed URLs are accepted.
 If the parameter C<local> is passed, only local paths are accepted.
 
-If the parameter was signed, the signature will be removed on success.
+If the parameter was signed, the signature with the URI parameter C<crto>
+will be removed on success (even if the URL was local).
 
 =head1 HOOKS
 
@@ -358,10 +270,11 @@ and the error message of the check.
 
 =head1 BUGS and CAVEATS
 
-The URLs are currently signed using SHA-1 and a secret
-(with the default being the application secret).
-There are known attacks to SHA-1, so this solution does not mean
-you should not validate the URL further in critical scenarios.
+The URLs are currently signed using HMAC-SHA-1 and a secret.
+There are known attacks to SHA-1.
+
+Local redirects need to be paths -
+URLs with host information are not supported.
 
 
 =head1 AVAILABILITY

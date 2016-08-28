@@ -2,5 +2,7 @@ Changes
 MANIFEST
 Makefile.PL
 lib/Mojolicious/Plugin/ClosedRedirect.pm
-t/closed_redirect.t
+t/closed_redirect_validation.t
 t/closed_redirect_secrets.t
+t/closed_redirect_local.t
+t/closed_redirect_helper.t
