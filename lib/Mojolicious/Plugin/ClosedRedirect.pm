@@ -216,13 +216,12 @@ Mojolicious::Plugin::ClosedRedirect - Defend Open Redirect Attacks
 =head1 DESCRIPTION
 
 This plugin helps you to avoid
-L<http://cwe.mitre.org/data/definitions/601.html|OpenRedirect>
+L<OpenRedirect|http://cwe.mitre.org/data/definitions/601.html>
 vulnerabilities in your application by limiting redirections
 to either local paths or
-L<https://webmasters.googleblog.com/2009/01/open-redirect-urls-is-your-site-being.html|signed URLs>.
+L<signed URLs|https://webmasters.googleblog.com/2009/01/open-redirect-urls-is-your-site-being.html>.
 
-B<This is early software and the API and functionality may change in various ways!>
-B<Wait until it's published on CPAN before you use it!>
+B<This module is an early release! There may be significant changes in the future.>
 
 
 =head1 ATTRIBUTES
