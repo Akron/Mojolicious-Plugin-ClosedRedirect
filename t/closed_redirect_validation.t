@@ -72,7 +72,7 @@ is($fail, 'Fail: fwd:hallo - Redirect is invalid', 'Failed');
 $fail = '';
 
 my $url = '/mypath?crto=a4538583e3c0a534f3863050804c746a9bd92a2f';
-is($url, app->signed_url_for('/mypath'), 'Signing is valid');
+is($url, app->close_redirect_to('/mypath'), 'Signing is valid');
 $t->get_ok('/signed?fwd=' . $url)
   ->status_is(302)
   ->header_is('Location', '/mypath');
@@ -99,7 +99,7 @@ $t->get_ok('/signed?fwd=/mypath?crto=a4538583e3c0a534f3863050804c746a9bd92a2f'.
 is($fail, 'Fail: fwd:/mypath?crto=a4538583e3c0a534f3863050804c746a9bd92a2f - Redirect is defined multiple times', 'Failed');
 $fail = '';
 
-my $surl = app->signed_url_for('http://example.com/cool.php');
+my $surl = app->close_redirect_to('http://example.com/cool.php');
 is($surl, 'http://example.com/cool.php?crto=9809dfc8b938498b70e3b0a290ba40109d914f71', 'Signed URL is fine');
 
 $t->get_ok('/signed?fwd=' . $surl)

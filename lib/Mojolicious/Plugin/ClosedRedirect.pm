@@ -9,8 +9,6 @@ our $VERSION = '0.08';
 # TODO: Support domain whitelisting, like
 #       https://github.com/sdsdkkk/safe_redirect
 # TODO: Accept same origin URLs.
-# TODO: Add 'is_local_url' validator check.
-#       see http://www.asp.net/mvc/overview/security/preventing-open-redirection-attacks
 # TODO: Probably enforce full URLs to handle things like:
 #       back_url.starts_with?(root_url)
 #       https://www.redmine.org/issues/19577
@@ -28,10 +26,9 @@ sub register {
 
   my $p_secret = $param->{secret};
 
-  # Establish 'signed_url_for' helper
-  # TODO: Better sign_redirect_for
+  # Establish 'close_redirect_to' helper
   $app->helper(
-    signed_url_for => sub {
+    close_redirect_to => sub {
       my $c = shift;
 
       my $url = $c->url_for(@_);
@@ -149,7 +146,7 @@ sub register {
       # Prevents log-injection attack
       $app->log->warn(
         "Open Redirect Attack - $err: URL for " . quote($name) . ' is ' . quote($return_url)
-        );
+      );
 
       return $err;
     }
@@ -160,10 +157,7 @@ sub register {
 # Check for local Path
 # Based on http://www.asp.net/mvc/overview/security/preventing-open-redirection-attacks
 sub local_path {
-  my $url = $_[0];
-
-  $url = url_unescape $url;
-
+  my $url = url_unescape $_[0];
   return 1 if $url =~ m!^(?:/(?:[^\/\\]|$)|~\/.)!;
   return;
 };
@@ -191,6 +185,8 @@ Mojolicious::Plugin::ClosedRedirect - Defend Open Redirect Attacks
 
     # Check for a redirection parameter
     $v->required('fwd')->closed_redirect;
+
+    # ...
 
     # Redirect to redirection URL
     return $c->redirect_to($v->param('fwd')) unless $v->has_error;
@@ -230,10 +226,10 @@ of the configuration file with the key C<ClosedRedirect>
 
 =head1 HELPERS
 
-=head2 signed_url_for
+=head2 close_redirect_to
 
   $c->url_for('/login')->query([
-    fwd => $c->signed_url_for('http://example.com/path')
+    fwd => $c->close_redirect_to('http://example.com/path')
   ]);
 
 Sign a redirection URL with the defined secret.

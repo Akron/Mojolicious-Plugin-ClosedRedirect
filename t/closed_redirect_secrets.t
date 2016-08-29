@@ -36,7 +36,7 @@ my $app = $t->app;
 my $c = $app->build_controller;
 
 my $pure = $c->url_for('myname');
-my $signed = $app->signed_url_for('myname');
+my $signed = $app->close_redirect_to('myname');
 like($signed, qr/crto/, 'Signed');
 like($signed, qr!mypath!, 'Signed');
 
@@ -47,7 +47,7 @@ $t->get_ok('/signed?fwd=' . url_escape($signed))
 # Rolling secrets!
 app->secrets(['456', '123']);
 
-my $signed2 = $app->signed_url_for('myname');
+my $signed2 = $app->close_redirect_to('myname');
 isnt($signed, $signed2, 'Secrets differ');
 
 $t->get_ok('/signed?fwd=' . url_escape($signed))

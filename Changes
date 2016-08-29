@@ -1,3 +1,6 @@
+0.09 2016-08-29
+        - Rename sign_url_for to close_redirect_to.
+
 0.08 2016-08-28
         - Introduced closed_redirect check.
         - Removed closed_redirect_to helper.
