@@ -3,7 +3,7 @@ use Mojo::Base 'Mojolicious::Plugin';
 use Mojo::ByteStream 'b';
 use Mojo::Util qw/secure_compare url_unescape quote/;
 
-our $VERSION = '0.08';
+our $VERSION = '0.09';
 
 # TODO: Use rolling plugin secrets
 # TODO: Support domain whitelisting, like
@@ -24,7 +24,9 @@ sub register {
     $param = { %$param, %$config_param };
   };
 
-  my $p_secret = $param->{secret};
+  my $p_secrets = $param->{secrets};
+  $p_secrets //= [$param->{secret}] if $param->{secret};
+  $p_secrets //= [];
 
   # Establish 'close_redirect_to' helper
   $app->helper(
@@ -40,7 +42,7 @@ sub register {
       $url->path->canonicalize;
 
       # Get p_secret or the first application secret
-      my $secret = $p_secret || $app->secrets->[0];
+      my $secret = $p_secrets->[0] || $app->secrets->[0];
 
       # Calculate check
       my $url_check =
@@ -112,8 +114,11 @@ sub register {
 
             my $url_check;
 
+            my @secrets = @{$p_secrets} if $p_secrets;
+            @secrets = @{$app->secrets} unless @secrets;
+
             # Check all secrets
-            foreach ($p_secret || @{$app->secrets}) {
+            foreach (@secrets) {
 
               # Calculate check
               $url_check =
@@ -211,12 +216,25 @@ B<Wait until it's published on CPAN before you use it!>
 
 =head2 register
 
+  # Mojolicious
+  $app->plugin('ClosedRedirect');
+
+  # Mojolicious::Lite
+  plugin 'ClosedRedirect';
+
+Called when registering the plugin.
+Accepts the following parameters.
+
 =over 2
 
-=item C<secret>
+=item C<secrets>
 
-Set a special secret to be used to sign URLs.
-Defaults to the first application secret.
+  plugin ClosedRedirect => {
+    secrets => [123, 'abz']
+  };
+
+Set special secrets to be used to sign URLs.
+Defaults to the application secrets.
 
 =back
 
@@ -271,6 +289,12 @@ There are known attacks to SHA-1.
 
 Local redirects need to be paths -
 URLs with host information are not supported.
+
+
+=head1 DEPENDENCIES
+
+L<Mojolicious>.
+
 
 
 =head1 AVAILABILITY
