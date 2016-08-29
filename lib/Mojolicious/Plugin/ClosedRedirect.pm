@@ -5,12 +5,10 @@ use Mojo::Util qw/secure_compare url_unescape quote/;
 
 our $VERSION = '0.09';
 
-# TODO: Use rolling plugin secrets
 # TODO: Support domain whitelisting, like
 #       https://github.com/sdsdkkk/safe_redirect
 # TODO: Accept same origin URLs.
 # TODO: Probably enforce full URLs to handle things like:
-#       back_url.starts_with?(root_url)
 #       https://www.redmine.org/issues/19577
 
 # Register plugin
@@ -24,9 +22,10 @@ sub register {
     $param = { %$param, %$config_param };
   };
 
-  my $p_secrets = $param->{secrets};
-  $p_secrets //= [$param->{secret}] if $param->{secret};
-  $p_secrets //= [];
+  # Set secrets
+  if ($param->{secrets} && ref $param->{secrets} eq 'ARRAY') {
+    $plugin->secrets($param->{secrets});
+  };
 
   # Establish 'close_redirect_to' helper
   $app->helper(
@@ -41,8 +40,8 @@ sub register {
       # Canonicalize
       $url->path->canonicalize;
 
-      # Get p_secret or the first application secret
-      my $secret = $p_secrets->[0] || $app->secrets->[0];
+      # Get the first plugin secret or the first application secret
+      my $secret = $plugin->secrets->[0] // $app->secrets->[0];
 
       # Calculate check
       my $url_check =
@@ -82,7 +81,7 @@ sub register {
         if ($method ne 'signed') {
 
           # That's fine
-          if (local_path($return_url)) {
+          if (_local_path($return_url)) {
             # Get url
             $url = Mojo::URL->new($return_url);
 
@@ -114,8 +113,8 @@ sub register {
 
             my $url_check;
 
-            my @secrets = @{$p_secrets} if $p_secrets;
-            @secrets = @{$app->secrets} unless @secrets;
+            # Use application secrets
+            my @secrets = $plugin->secrets->[0] ? @{$plugin->secrets} : @{$app->secrets};
 
             # Check all secrets
             foreach (@secrets) {
@@ -150,8 +149,9 @@ sub register {
       # Warn in log
       # Prevents log-injection attack
       $app->log->warn(
-        "Open Redirect Attack - $err: URL for " . quote($name) . ' is ' . quote($return_url)
-      );
+        "Open Redirect Attack - $err: URL for " .
+          quote($name) . ' is ' . quote($return_url)
+        );
 
       return $err;
     }
@@ -159,9 +159,19 @@ sub register {
 };
 
 
+# secrets attribute
+sub secrets {
+  my $self = shift;
+  if (@_ > 0) {
+    $self->{secrets} = shift;
+  };
+  return $self->{secrets} // [];
+};
+
+
 # Check for local Path
 # Based on http://www.asp.net/mvc/overview/security/preventing-open-redirection-attacks
-sub local_path {
+sub _local_path {
   my $url = url_unescape $_[0];
   return 1 if $url =~ m!^(?:/(?:[^\/\\]|$)|~\/.)!;
   return;
@@ -182,7 +192,9 @@ Mojolicious::Plugin::ClosedRedirect - Defend Open Redirect Attacks
 
 =head1 SYNOPSIS
 
-  plugin 'ClosedRedirect';
+  plugin ClosedRedirect => {
+    secrets => [123, 'abz']
+  };
 
   get '/login' => sub {
     my $c = shift;
@@ -196,7 +208,7 @@ Mojolicious::Plugin::ClosedRedirect - Defend Open Redirect Attacks
     # Redirect to redirection URL
     return $c->redirect_to($v->param('fwd')) unless $v->has_error;
 
-    # Redirect to home page on error
+    # Redirect to home page on failed validation
     return $c->redirect_to('/');
   };
 
@@ -212,45 +224,17 @@ L<https://webmasters.googleblog.com/2009/01/open-redirect-urls-is-your-site-bein
 B<This is early software and the API and functionality may change in various ways!>
 B<Wait until it's published on CPAN before you use it!>
 
-=head1 METHODS
 
-=head2 register
+=head1 ATTRIBUTES
 
-  # Mojolicious
-  $app->plugin('ClosedRedirect');
+=head2 secrets
 
-  # Mojolicious::Lite
-  plugin 'ClosedRedirect';
+  $plugin->secrets([123, 'abz']);
+  print $plugin->secrets->[0];
 
-Called when registering the plugin.
-Accepts the following parameters.
-
-=over 2
-
-=item C<secrets>
-
-  plugin ClosedRedirect => {
-    secrets => [123, 'abz']
-  };
-
-Set special secrets to be used to sign URLs.
+Set secrets to be used to sign URLs.
 Defaults to the application secrets.
 
-=back
-
-All parameters can be set either on registration or as part
-of the configuration file with the key C<ClosedRedirect>
-(with the configuration file having the higher precedence).
-
-=head1 HELPERS
-
-=head2 close_redirect_to
-
-  $c->url_for('/login')->query([
-    fwd => $c->close_redirect_to('http://example.com/path')
-  ]);
-
-Sign a redirection URL with the defined secret.
 
 =head1 CHECKS
 
@@ -268,6 +252,18 @@ If the parameter C<local> is passed, only local paths are accepted.
 If the parameter was signed, the signature with the URI parameter C<crto>
 will be removed on success (even if the URL was local).
 
+
+=head1 HELPERS
+
+=head2 close_redirect_to
+
+  my $url = $c->url_for('/login')->query([
+    fwd => $c->close_redirect_to('http://example.com/path')
+  ]);
+
+Sign a redirection URL with the defined secret.
+
+
 =head1 HOOKS
 
 =head2 on_open_redirect_attack
@@ -282,19 +278,36 @@ Passes the parameter name, the first failing URL,
 and the error message of the check.
 
 
+=head1 METHODS
+
+=head2 register
+
+  # Mojolicious
+  $app->plugin('ClosedRedirect');
+
+  # Mojolicious::Lite
+  plugin 'ClosedRedirect';
+
+Called when registering the plugin.
+Accepts attributes as parameters.
+
+All parameters can be set either on registration or as part
+of the configuration file with the key C<ClosedRedirect>
+(with the configuration file having the higher precedence).
+
+
 =head1 BUGS and CAVEATS
 
 The URLs are currently signed using HMAC-SHA-1 and a secret.
 There are known attacks to SHA-1.
 
 Local redirects need to be paths -
-URLs with host information are not supported.
+URLs with host information are not supported yet.
 
 
 =head1 DEPENDENCIES
 
 L<Mojolicious>.
-
 
 
 =head1 AVAILABILITY

@@ -1,6 +1,6 @@
 0.09 2016-08-29
         - Rename sign_url_for to close_redirect_to.
-        - Support secrets on registration.
+        - Support rolling private secrets.
         - Prepare CPAN release.
 
 0.08 2016-08-28
