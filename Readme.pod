@@ -4,78 +4,131 @@
 
 Mojolicious::Plugin::ClosedRedirect - Defend Open Redirect Attacks
 
+
 =head1 SYNOPSIS
 
-  # Check for Open Redirect Attack
-  return if $c->closed_redirect_to('return_url');
+  plugin ClosedRedirect => {
+    secrets => [123, 'abz']
+  };
 
-  # Open Redirect attack discovered
-  return $c->redirect_to('home');
+  get '/login' => sub {
+    my $c = shift;
+    my $v = $c->validation;
 
-  # Protection for open redirect_to
+    # Check for a redirection parameter
+    $v->required('fwd')->closed_redirect;
 
-  $app->routes->route('/mypath')->name('mypath');
+    # ...
 
-  $c->url_for('acct_login')->query([
-    return_url => $c->signed_url_for('mytest')
-  ]);
+    # Redirect to redirection URL
+    return $c->redirect_to($v->param('fwd')) unless $v->has_error;
 
-  # Redirect to valid url from $c->param('return_url')
-  return if $c->closed_redirect_to('return_url');
-
-  # Fails
-  return $c->redirect_to('home');
+    # Redirect to home page on failed validation
+    return $c->redirect_to('/');
+  };
 
 
 =head1 DESCRIPTION
 
-This plugin helps you to protect your users not to tap into a
+This plugin helps you to avoid
 L<http://cwe.mitre.org/data/definitions/601.html|OpenRedirect>
-vulnerabilities by using signed URLs.
+vulnerabilities in your application by limiting redirections
+to either local paths or
+L<https://webmasters.googleblog.com/2009/01/open-redirect-urls-is-your-site-being.html|signed URLs>.
+
+B<This is early software and the API and functionality may change in various ways!>
+B<Wait until it's published on CPAN before you use it!>
+
+
+=head1 ATTRIBUTES
+
+=head2 secrets
+
+  $plugin->secrets([123, 'abz']);
+  print $plugin->secrets->[0];
+
+Set secrets to be used to sign URLs.
+Defaults to the application secrets.
+
+
+=head1 CHECKS
+
+=head2 closed_redirect
+
+  # Check for a redirection parameter
+  $c->validation->required('fwd')->closed_redirect;
+
+Check the parameter in scope for being a valid URL to redirect to.
+
+If no parameter is passed to the check, local paths or signed URLs are accepted.
+If the parameter C<signed> is passed, only signed URLs are accepted.
+If the parameter C<local> is passed, only local paths are accepted.
+
+If the parameter was signed, the signature with the URI parameter C<crto>
+will be removed on success (even if the URL was local).
+
+
+=head1 HELPERS
+
+=head2 close_redirect_to
+
+  my $url = $c->url_for('/login')->query([
+    fwd => $c->close_redirect_to('http://example.com/path')
+  ]);
+
+Sign a redirection URL with the defined secret.
+
+
+=head1 HOOKS
+
+=head2 on_open_redirect_attack
+
+  $app->hook(on_open_redirect_attack => sub {
+    my ($name, $url, $msg) = @_;
+    ...
+  });
+
+Emitted when an open redirect attack was detected.
+Passes the parameter name, the first failing URL,
+and the error message of the check.
+
 
 =head1 METHODS
 
 =head2 register
 
-=over 2
+  # Mojolicious
+  $app->plugin('ClosedRedirect');
 
-=item C<silent>
+  # Mojolicious::Lite
+  plugin 'ClosedRedirect';
 
-Accepts a boolean value, if users should not receive a notification
-on redirect attacs. Defaults to not being silent.
-
-=item C<token_length>
-
-Set the length of the secret token to append to redirect locations.
-Defaults to C<16>.
-
-=item C<secret>
-
-Pass the secret to be used to hash on redirect locations.
-Defaults to the first application secret.
-
-=back
+Called when registering the plugin.
+Accepts attributes as parameters.
 
 All parameters can be set either on registration or as part
 of the configuration file with the key C<ClosedRedirect>
 (with the configuration file having the higher precedence).
 
-=head1 HELPERS
 
 =head1 BUGS and CAVEATS
 
-The URLs are currently signed using SHA-1 and a free, prefixed secret
-(with the default being the application secret).
-There are known attacks to SHA-1, so this solution does not mean
-you should not validate the URL further.
+The URLs are currently signed using HMAC-SHA-1 and a secret.
+There are known attacks to SHA-1.
 
-It is not possible to change session information after a successfull redirect,
-so the normal way to deal with that is to have a fallback for non valid
-closed redirects in a controller.
+Local redirects need to be paths -
+URLs with host information are not supported yet.
+
+
+=head1 DEPENDENCIES
+
+L<Mojolicious>.
+
 
 =head1 AVAILABILITY
 
   https://github.com/Akron/Mojolicious-Plugin-ClosedRedirect
+
 
 =head1 COPYRIGHT AND LICENSE
 
