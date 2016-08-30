@@ -1,3 +1,6 @@
+0.10 2016-08-30
+        - Fixed link to license.
+
 0.09 2016-08-29
         - Rename sign_url_for to close_redirect_to.
         - Support rolling private secrets.

@@ -14,11 +14,24 @@ WriteMakefile(
   },
   PREREQ_PM => {
     'Mojolicious' => 4.67
-    },
-  META_MERGE   => {
-    requires  => { perl => '5.010001' },
   },
+  LICENSE      => 'artistic_2',
+  (eval { ExtUtils::MakeMaker->VERSION(6.46) } ? (META_MERGE => {
+    'meta-spec' => { version => 2 },
+    requires  => { perl => '5.010001' },
+    resources => {
+      license     => 'http://www.opensource.org/licenses/artistic-license-2.0',
+      repository  => {
+        type => 'git',
+        web => 'https://github.com/Akron/Mojolicious-Plugin-ClosedRedirect',
+        url => 'https://github.com/Akron/Mojolicious-Plugin-ClosedRedirect.git',
+      },
+      bugtracker  => {
+        web => 'https://github.com/Akron/Mojolicious-Plugin-ClosedRedirect/issues',
+      },
+    }
+  }) : (),
+  ),
   MIN_PERL_VERSION => '5.010001',
   test => {TESTS => 't/*.t'}
 );
-
