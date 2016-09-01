@@ -3,7 +3,7 @@ use Mojo::Base 'Mojolicious::Plugin';
 use Mojo::ByteStream 'b';
 use Mojo::Util qw/secure_compare url_unescape quote/;
 
-our $VERSION = '0.10';
+our $VERSION = '0.11';
 
 # TODO: Support domain whitelisting, like
 #       https://github.com/sdsdkkk/safe_redirect
