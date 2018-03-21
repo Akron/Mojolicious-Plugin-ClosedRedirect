@@ -78,6 +78,18 @@ will be removed on success (even if the URL was local).
 Sign a redirection URL with the defined secret.
 
 
+=head2 relative_redirect_to
+
+  $c->relative_redirect_to('/my/app/home');
+
+Redirects to a given path after removing prefix parts that
+are given as the request's base path.
+Expects the same parameters as L<Mojolicious::Controller/redirect_to>.
+This comes in handy if your application is not running under
+a root path and you modify relative URL creation by changing the
+request's base path.
+
+
 =head1 HOOKS
 
 =head2 on_open_redirect_attack
@@ -131,7 +143,7 @@ L<Mojolicious>.
 
 =head1 COPYRIGHT AND LICENSE
 
-Copyright (C) 2016, L<Nils Diewald|http://nils-diewald.de/>.
+Copyright (C) 2016-2017, L<Nils Diewald|http://nils-diewald.de/>.
 
 This program is free software, you can redistribute it
 and/or modify it under the terms of the Artistic License version 2.0.
