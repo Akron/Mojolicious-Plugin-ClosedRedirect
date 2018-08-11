@@ -10,7 +10,8 @@ WriteMakefile(
   ABSTRACT     => 'Defend Open Redirect Attacks',
   VERSION_FROM => 'lib/Mojolicious/Plugin/ClosedRedirect.pm',
   BUILD_REQUIRES => {
-    'Test::More' => 0
+    'Test::More' => 0,
+    'Test::Memory::Cycle' => 1.06
   },
   PREREQ_PM => {
     'Mojolicious' => 7.29
